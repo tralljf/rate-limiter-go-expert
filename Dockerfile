@@ -1,0 +1,20 @@
+# syntax=docker/dockerfile:1
+
+FROM golang:1.26 AS base
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+
+# Test stage: used by `docker compose run --rm test` (race detector needs cgo).
+FROM base AS test
+ENV CGO_ENABLED=1
+CMD ["go", "test", "-race", "-count=1", "-v", "./..."]
+
+FROM base AS build
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server
+
+FROM gcr.io/distroless/static-debian12:nonroot
+COPY --from=build /out/server /server
+EXPOSE 8080
+ENTRYPOINT ["/server"]
